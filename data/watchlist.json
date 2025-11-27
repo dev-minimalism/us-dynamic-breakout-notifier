@@ -1,0 +1,18 @@
+{
+  "tickers": [
+    "AAPL", "MSFT", "GOOGL", "GOOG", "AMZN", "NVDA", "META", "TSLA",
+    "AVGO", "LLY", "WMT", "JPM", "V", "UNH", "XOM", "MA", "COST",
+    "HD", "PG", "JNJ", "ABBV", "CRM", "BAC", "NFLX", "KO", "MRK",
+    "CVX", "PEP", "AMD", "TMO", "ADBE", "WFC", "LIN", "CSCO", "ACN",
+    "MCD", "ABT", "DHR", "INTU", "TXN", "IBM", "QCOM", "GE", "VZ",
+    "CMCSA", "PM", "ISRG", "NOW", "AMAT", "INTC", "NEE", "RTX", "HON",
+    "AMGN", "SPGI", "UNP", "GS", "CAT", "PFE", "T", "LOW", "MS",
+    "BKNG", "BLK", "ELV", "AXP", "VRTX", "PLD", "SYK", "COP", "DE",
+    "MDLZ", "ADI", "SCHW", "CB", "GILD", "LRCX", "MMC", "ADP", "TJX",
+    "CI", "BMY", "REGN", "BA", "MO", "SO", "KLAC", "DUK", "SLB",
+    "SNPS", "CDNS", "CME", "ICE", "WM", "EOG", "CL", "NOC", "MCO"
+  ],
+  "updated_at": "2025-11-28 00:00:00",
+  "screening_mode": "manual",
+  "last_screening": null
+}
