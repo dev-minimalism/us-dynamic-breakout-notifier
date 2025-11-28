@@ -152,7 +152,9 @@ class TradingBot:
         market_status = get_market_status()
 
         if not market_status['is_open']:
-            print("⏸️  US market closed. Skipping scan.")
+            msg = "⏸️ US market closed. Skipping scan."
+            print(msg)
+            self.telegram.send_message(msg)
             self.is_scanning = False
             return []
 
@@ -176,6 +178,10 @@ class TradingBot:
 
             if not signals:
                 print("⚪ No signals found")
+                self.telegram.send_message(
+                    f"✅ Scan complete. No breakout signals found.\n"
+                    f"📊 Scanned: {len(self.watchlist.tickers)} stocks"
+                )
 
             return signals
 
