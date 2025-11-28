@@ -143,9 +143,11 @@ class TradingBot:
         finally:
             self.is_screening = False
 
-    def run_scan(self):
+    def run_scan(self, notify_busy: bool = False):
         """Run breakout signal scan."""
         if self.is_scanning:
+            if notify_busy:
+                self.telegram.send_message("⏳ Scan already in progress...")
             return []
 
         self.is_scanning = True
@@ -391,14 +393,16 @@ class TradingBot:
                         if 'message' in update and 'text' in update['message']:
                             text = update['message']['text']
                             chat_id = str(update['message']['chat']['id'])
+                            print(f"📩 Received: '{text}' from chat_id={chat_id}")
 
                             if chat_id == self.telegram_chat_id:
                                 response = self.handle_command(text)
+                                print(f"📤 Response: {response}")
 
                                 if response == 'SCAN':
                                     self.telegram.send_message("🔍 Starting scan...")
                                     threading.Thread(
-                                        target=self.run_scan,
+                                        target=lambda: self.run_scan(notify_busy=True),
                                         daemon=True
                                     ).start()
                                 elif response == 'RESCREEN':
