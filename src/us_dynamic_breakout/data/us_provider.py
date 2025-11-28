@@ -1,9 +1,28 @@
 """US stock data provider using yfinance."""
 
+import logging
+import os
+import sys
+from contextlib import contextmanager
 from typing import List, Optional
 
 import pandas as pd
 import yfinance as yf
+
+# Suppress yfinance error messages
+logging.getLogger('yfinance').setLevel(logging.CRITICAL)
+
+
+@contextmanager
+def suppress_stderr():
+    """Temporarily suppress stderr output."""
+    with open(os.devnull, 'w') as devnull:
+        old_stderr = sys.stderr
+        sys.stderr = devnull
+        try:
+            yield
+        finally:
+            sys.stderr = old_stderr
 
 
 class USStockProvider:
@@ -67,8 +86,9 @@ class USStockProvider:
             DataFrame with OHLCV data or None if failed
         """
         try:
-            stock = yf.Ticker(ticker)
-            df = stock.history(period=period)
+            with suppress_stderr():
+                stock = yf.Ticker(ticker)
+                df = stock.history(period=period)
             if df.empty:
                 return None
             return df
@@ -87,7 +107,8 @@ class USStockProvider:
             Dict with stock info or None if failed
         """
         try:
-            stock = yf.Ticker(ticker)
-            return stock.info
+            with suppress_stderr():
+                stock = yf.Ticker(ticker)
+                return stock.info
         except Exception:
             return None

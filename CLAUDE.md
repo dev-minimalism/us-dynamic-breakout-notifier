@@ -10,7 +10,7 @@ William O'Neil breakout trading bot with dynamic stock screening. Monitors US ma
 
 ```bash
 # Run the main trading bot
-python scripts/run_bot.py
+python scripts/run_us_dynamic_breakout_notifier.py
 
 # Run dynamic screener standalone
 python scripts/run_screener.py
@@ -51,9 +51,10 @@ TelegramBot ← notifications ← PositionManager (positions.json)
 
 **`src/us_dynamic_breakout/bot/detector.py`** - Core breakout detection logic
 - `detect_pivot_breakout()`: A valid signal requires:
-  - Price breaks above 20-day high (resistance)
-  - Volume surge >= 50% above 30-day average
+  - Price breaks above 20-day high (resistance level)
+  - Volume surge >= 50% above 30-day average (29 days excluding current)
   - Breakout not too extended (within 5% of resistance)
+- Scans with 0.5s delay between stocks to avoid rate limiting
 
 **`src/us_dynamic_breakout/screener/screener.py`** - Stock universe filtering
 - Filters by market cap, volume, price before breakout scanning
@@ -68,9 +69,7 @@ TelegramBot ← notifications ← PositionManager (positions.json)
 **`src/us_dynamic_breakout/data/us_provider.py`** - Data provider
 - `USStockProvider`: yfinance wrapper with hardcoded S&P500/NASDAQ100 tickers
 
-**`config/settings.py`** - Settings dataclasses loaded from `.env`
-
-**`scripts/run_bot.py`** - `TradingBot` class orchestrates all components
+**`scripts/run_us_dynamic_breakout_notifier.py`** - `TradingBot` class orchestrates all components, loads settings from `.env`
 
 ### Configuration
 

@@ -9,11 +9,17 @@ This script runs the complete trading bot with:
 - Telegram notifications and commands
 """
 
+import os
 import sys
 import time
 import threading
 from datetime import datetime, timedelta
 from pathlib import Path
+
+from dotenv import load_dotenv
+
+# Load .env file
+load_dotenv(Path(__file__).parent.parent / ".env")
 
 # Add src to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
@@ -21,13 +27,12 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 from us_dynamic_breakout.bot import (
     BreakoutDetector,
     TelegramBot,
-    PositionManager,
+    DBPositionManager,
     WatchlistManager
 )
 from us_dynamic_breakout.screener import DynamicScreener
 from us_dynamic_breakout.data import USStockProvider
 from us_dynamic_breakout.utils import get_market_status
-from config import get_settings
 
 
 class TradingBot:
@@ -35,29 +40,61 @@ class TradingBot:
 
     def __init__(self):
         """Initialize the trading bot."""
-        self.settings = get_settings()
+        # Load settings from environment
+        self.telegram_token = os.getenv('TELEGRAM_TOKEN', '')
+        self.telegram_chat_id = os.getenv('TELEGRAM_CHAT_ID', '')
+
+        # Screening settings
+        self.use_dynamic_screening = os.getenv('USE_DYNAMIC_SCREENING', 'true').lower() == 'true'
+        self.screening_interval_hours = int(os.getenv('SCREENING_INTERVAL_HOURS', '24'))
+        self.max_stocks = int(os.getenv('MAX_STOCKS', '100'))
+
+        # Trading settings
+        self.scan_interval_seconds = int(os.getenv('SCAN_INTERVAL_SECONDS', '1800'))
+        self.stop_loss_pct = float(os.getenv('STOP_LOSS_PCT', '0.08'))
+        self.take_profit_pct = float(os.getenv('TAKE_PROFIT_PCT', '0.20'))
+        self.min_volume_surge = float(os.getenv('MIN_VOLUME_SURGE', '50.0'))
+        self.max_breakout_pct = float(os.getenv('MAX_BREAKOUT_PCT', '5.0'))
+
+        # SSH settings
+        ssh_host = os.getenv('SSH_HOST', '')
+        ssh_port = int(os.getenv('SSH_PORT', '22'))
+        ssh_user = os.getenv('SSH_USER', '')
+        ssh_key_path = os.path.expanduser(os.getenv('SSH_KEY_PATH', ''))
+
+        # Database settings
+        db_host = os.getenv('DB_HOST', 'localhost')
+        db_port = int(os.getenv('DB_PORT', '5432'))
+        db_name = os.getenv('DB_NAME', '')
+        db_user = os.getenv('DB_USER', '')
+        db_password = os.getenv('DB_PASSWORD', '')
 
         # Validate required settings
-        if not self.settings.telegram.token or not self.settings.telegram.chat_id:
+        if not self.telegram_token or not self.telegram_chat_id:
             print("❌ Telegram credentials not configured!")
-            print("   Set TELEGRAM_TOKEN and TELEGRAM_CHAT_ID environment variables")
-            print("   Or create .env file with these values")
+            print("   Set TELEGRAM_TOKEN and TELEGRAM_CHAT_ID in .env file")
             sys.exit(1)
 
         # Initialize components
-        self.telegram = TelegramBot(
-            self.settings.telegram.token,
-            self.settings.telegram.chat_id
+        self.telegram = TelegramBot(self.telegram_token, self.telegram_chat_id)
+        self.watchlist = WatchlistManager("data/watchlist.json")
+        self.positions = DBPositionManager(
+            ssh_host=ssh_host,
+            ssh_port=ssh_port,
+            ssh_user=ssh_user,
+            ssh_key_path=ssh_key_path,
+            db_host=db_host,
+            db_port=db_port,
+            db_name=db_name,
+            db_user=db_user,
+            db_password=db_password
         )
-        self.watchlist = WatchlistManager(self.settings.paths.watchlist_file)
-        self.positions = PositionManager(self.settings.paths.positions_file)
         self.detector = BreakoutDetector(
-            min_volume_surge=self.settings.trading.min_volume_surge,
-            max_breakout_pct=self.settings.trading.max_breakout_pct
+            min_volume_surge=self.min_volume_surge,
+            max_breakout_pct=self.max_breakout_pct
         )
         self.screener = DynamicScreener()
 
-        self.use_dynamic_screening = self.settings.screening.use_dynamic_screening
         self.last_screening_time = self.watchlist.last_screening_time
         self.is_scanning = False
         self.is_screening = False
@@ -74,7 +111,7 @@ class TradingBot:
         if self.last_screening_time is None:
             return True
         hours_passed = (datetime.now() - self.last_screening_time).total_seconds() / 3600
-        return hours_passed >= self.settings.screening.screening_interval_hours
+        return hours_passed >= self.screening_interval_hours
 
     def run_screening(self):
         """Run dynamic stock screening."""
@@ -89,9 +126,7 @@ class TradingBot:
                 "This may take 5-10 minutes."
             )
 
-            tickers = self.screener.run_full_scan(
-                max_stocks=self.settings.screening.max_stocks
-            )
+            tickers = self.screener.run_full_scan(max_stocks=self.max_stocks)
 
             self.watchlist.update_from_screening(tickers)
             self.last_screening_time = datetime.now()
@@ -100,7 +135,7 @@ class TradingBot:
                 f"✅ <b>Screening Complete!</b>\n\n"
                 f"📊 Updated watchlist:\n"
                 f"   🇺🇸 US: {len(tickers)} stocks\n\n"
-                f"⏰ Next screening: {self.settings.screening.screening_interval_hours}h"
+                f"⏰ Next screening: {self.screening_interval_hours}h"
             )
 
         except Exception as e:
@@ -174,6 +209,9 @@ class TradingBot:
                         profit_pct, holding_days, exit_reason
                     )
                     self.telegram.send_message(msg)
+
+                    # Record trade before removing position
+                    self.positions.record_trade(pos, current_price, exit_reason)
                     self.positions.remove(pos['ticker'])
 
             except Exception as e:
@@ -199,14 +237,51 @@ class TradingBot:
             return self._get_watchlist_text()
         elif cmd == '/positions':
             return self._get_positions_text()
+        elif cmd == '/trades':
+            return self._get_trades_text()
+        elif cmd == '/stats':
+            return self._get_stats_text()
         elif cmd == '/add' and len(parts) > 1:
             success, msg = self.watchlist.add(parts[1])
             return msg
         elif cmd == '/remove' and len(parts) > 1:
             success, msg = self.watchlist.remove(parts[1])
             return msg
+        elif cmd == '/close' and len(parts) > 1:
+            return self._close_position(parts[1].upper())
 
         return None
+
+    def _close_position(self, ticker: str) -> str:
+        """Manually close a position."""
+        position = self.positions.get(ticker)
+        if not position:
+            return f"❌ No position found for {ticker}"
+
+        # Get current price for P&L calculation
+        df = USStockProvider.get_stock_data(ticker, period='5d')
+        if df is not None and len(df) > 0:
+            current_price = df['Close'].iloc[-1]
+            profit_pct = self.positions.calculate_pnl(position, current_price)
+            holding_days = self.positions.get_holding_days(position)
+        else:
+            current_price = position['entry_price']
+            profit_pct = 0
+            holding_days = 0
+
+        # Record trade before removing position
+        self.positions.record_trade(position, current_price, "Manual Close")
+        self.positions.remove(ticker)
+
+        return (
+            f"✅ <b>Position Closed</b>\n\n"
+            f"📊 {ticker}\n"
+            f"💰 Entry: ${position['entry_price']:.2f}\n"
+            f"💵 Exit: ${current_price:.2f}\n"
+            f"📈 P&L: {profit_pct:+.2f}%\n"
+            f"📅 Held: {holding_days} days\n"
+            f"📝 Reason: Manual Close"
+        )
 
     def _get_help_text(self) -> str:
         return """
@@ -223,6 +298,11 @@ class TradingBot:
 
 <b>Positions:</b>
 /positions - Show open positions
+/close [TICKER] - Close position manually
+
+<b>Trade History:</b>
+/trades - Recent trade history
+/stats - Trading statistics
 
 <b>Status:</b>
 /status - Market and bot status
@@ -263,6 +343,38 @@ class TradingBot:
             text += f"\n• {p['ticker']} @ ${p['entry_price']:.2f}"
         return text
 
+    def _get_trades_text(self) -> str:
+        trades = self.positions.get_trades(limit=10)
+        if not trades:
+            return "📜 No trade history"
+
+        text = "📜 <b>Recent Trades</b>\n"
+        for t in trades:
+            pnl = t['profit_pct']
+            emoji = "🟢" if pnl > 0 else "🔴"
+            text += f"\n{emoji} {t['ticker']} {pnl:+.1f}% ({t['exit_reason']})"
+        return text
+
+    def _get_stats_text(self) -> str:
+        stats = self.positions.get_trade_stats()
+        if stats['total_trades'] == 0:
+            return "📈 No trades yet"
+
+        return f"""
+📈 <b>Trading Stats</b>
+
+🎯 Total Trades: {stats['total_trades']}
+✅ Wins: {stats['winning_trades']} | ❌ Losses: {stats['losing_trades']}
+📊 Win Rate: {stats['win_rate']:.1f}%
+
+💰 Avg Profit: {stats['avg_profit_pct']:+.2f}%
+🟢 Avg Win: {stats['avg_win_pct']:+.2f}%
+🔴 Avg Loss: {stats['avg_loss_pct']:+.2f}%
+
+📅 Avg Holding: {stats['avg_holding_days']:.1f} days
+💵 Total P&L: {stats['total_profit_pct']:+.2f}%
+"""
+
     def start_command_listener(self):
         """Start background thread for Telegram commands."""
         def listener():
@@ -274,7 +386,7 @@ class TradingBot:
                             text = update['message']['text']
                             chat_id = str(update['message']['chat']['id'])
 
-                            if chat_id == self.settings.telegram.chat_id:
+                            if chat_id == self.telegram_chat_id:
                                 response = self.handle_command(text)
 
                                 if response == 'SCAN':
@@ -312,7 +424,7 @@ class TradingBot:
         self.telegram.send_message(
             f"🤖 <b>O'Neil Breakout Bot Started (US)</b>\n\n"
             f"📊 Watchlist: {len(self.watchlist.tickers)} stocks\n"
-            f"📈 Scan interval: {self.settings.trading.scan_interval_seconds // 60} min\n\n"
+            f"📈 Scan interval: {self.scan_interval_seconds // 60} min\n\n"
             f"Send /help for commands"
         )
 
@@ -330,11 +442,9 @@ class TradingBot:
                 self.run_scan()
 
                 # Wait for next scan
-                next_scan = datetime.now() + timedelta(
-                    seconds=self.settings.trading.scan_interval_seconds
-                )
+                next_scan = datetime.now() + timedelta(seconds=self.scan_interval_seconds)
                 print(f"⏰ Next scan: {next_scan.strftime('%H:%M:%S')}")
-                time.sleep(self.settings.trading.scan_interval_seconds)
+                time.sleep(self.scan_interval_seconds)
 
         except KeyboardInterrupt:
             print("\n\n⛔ Bot stopped")

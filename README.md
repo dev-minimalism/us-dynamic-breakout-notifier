@@ -39,7 +39,7 @@ TELEGRAM_CHAT_ID=your_chat_id
 
 ```bash
 # Run the trading bot
-python scripts/run_bot.py
+python scripts/run_us_dynamic_breakout_notifier.py
 
 # Run screener only
 python scripts/run_screener.py
@@ -98,10 +98,8 @@ dynamic-oneil-breakout/
 │   │   └── us_provider.py   # US stock data (yfinance)
 │   └── utils/
 │       └── market.py        # Market hours utilities
-├── config/
-│   └── settings.py          # Settings dataclasses
 ├── scripts/
-│   ├── run_bot.py           # Main bot runner
+│   ├── run_us_dynamic_breakout_notifier.py  # Main bot runner
 │   ├── run_screener.py      # Screener runner
 │   └── run_backtest.py      # Backtest runner
 ├── data/                    # Runtime data (JSON)
@@ -162,6 +160,29 @@ The backtest engine:
 - Screens stocks daily using only data available at that time (no look-ahead bias)
 - Applies transaction costs (0.1%)
 - Manages positions with stop-loss, take-profit, and max holding period
+
+## Background Execution
+
+```bash
+# Basic background run
+nohup python scripts/run_us_dynamic_breakout_notifier.py > bot.log 2>&1 &
+
+# With date-stamped log file
+nohup python scripts/run_us_dynamic_breakout_notifier.py > bot_$(date +%Y%m%d).log 2>&1 &
+```
+
+**Useful commands:**
+
+```bash
+# Check if running
+ps aux | grep run_us_dynamic_breakout_notifier
+
+# Watch logs in real-time
+tail -f bot.log
+
+# Stop the bot
+pkill -f run_us_dynamic_breakout_notifier
+```
 
 ## Development
 

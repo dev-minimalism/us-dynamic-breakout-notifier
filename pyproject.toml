@@ -31,6 +31,9 @@ dependencies = [
     "numpy>=1.24.0",
     "requests>=2.28.0",
     "python-dotenv>=1.0.0",
+    "psycopg2-binary>=2.9.0",
+    "sshtunnel>=0.4.0",
+    "paramiko>=3.0.0,<4.0",
 ]
 
 [project.optional-dependencies]
@@ -43,7 +46,7 @@ dev = [
 ]
 
 [project.scripts]
-breakout-bot = "scripts.run_bot:main"
+breakout-bot = "scripts.run_us_dynamic_breakout_notifier:main"
 breakout-screener = "scripts.run_screener:main"
 breakout-backtest = "scripts.run_backtest:main"
 
