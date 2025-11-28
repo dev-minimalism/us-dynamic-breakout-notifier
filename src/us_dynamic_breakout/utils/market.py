@@ -8,6 +8,15 @@ def get_market_status() -> Dict:
     """
     Check current US market status (based on Korean time).
 
+    US market hours in KST:
+    - Regular: 23:30 - 06:00 next day
+    - Extended: 22:00 - 07:00
+
+    Weekend handling (KST):
+    - Sat 00:00-07:00: Open (US Friday session)
+    - Sat 22:00-Sun 07:00: Closed (US Saturday)
+    - Sun 22:00-Mon 07:00: Closed (US Sunday)
+
     Returns:
         Dict with 'is_open', 'time', 'weekday' keys
     """
@@ -15,18 +24,28 @@ def get_market_status() -> Dict:
     current_time = now.time()
     weekday = now.weekday()  # 0=Monday, 6=Sunday
 
-    is_weekend = weekday >= 5
-
-    # US market in KST: 23:30 - 06:00 next day (regular hours)
-    # Extended: 22:00 - 07:00
+    # US market in KST: 22:00 - 07:00 next day (extended hours)
     us_open_night = dt_time(22, 0)
     us_close_morning = dt_time(7, 0)
 
     is_open = False
-    if not is_weekend:
-        if current_time >= us_open_night:
+
+    # Check if we're in a trading time window
+    is_night_session = current_time >= us_open_night  # 22:00~23:59
+    is_morning_session = current_time <= us_close_morning  # 00:00~07:00
+
+    if is_night_session:
+        # Night session (22:00-23:59 KST) = US same day morning
+        # Closed on: Saturday night (US Sat), Sunday night (US Sun)
+        if weekday not in [5, 6]:  # Not Sat/Sun night
             is_open = True
-        elif current_time <= us_close_morning:
+    elif is_morning_session:
+        # Morning session (00:00-07:00 KST) = US previous day afternoon
+        # Closed on: Saturday morning (US Fri->Sat), Sunday morning (US Sat)
+        # Actually: Sat morning = US Friday session (open)
+        #          Sun morning = US Saturday (closed)
+        #          Mon morning = US Sunday (closed)
+        if weekday not in [0, 6]:  # Not Mon/Sun morning
             is_open = True
 
     return {
