@@ -168,7 +168,11 @@ The backtest engine:
 nohup python scripts/run_us_dynamic_breakout_notifier.py > bot.log 2>&1 &
 
 # With date-stamped log file
-nohup python scripts/run_us_dynamic_breakout_notifier.py > bot_$(date +%Y%m%d).log 2>&1 &
+nohup python -u scripts/run_us_dynamic_breakout_notifier.py > logs/bot_$(date +%Y%m%d).log 2>&1 &
+
+# logs 폴더에 저장
+mkdir -p logs
+nohup python -u scripts/run_us_dynamic_breakout_notifier.py > logs/bot_$(date +%Y%m%d).log 2>&1 &
 ```
 
 **Useful commands:**
