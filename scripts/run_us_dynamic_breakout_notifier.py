@@ -143,8 +143,13 @@ class TradingBot:
         finally:
             self.is_screening = False
 
-    def run_scan(self, notify_busy: bool = False):
-        """Run breakout signal scan."""
+    def run_scan(self, manual: bool = False, notify_busy: bool = False):
+        """Run breakout signal scan.
+
+        Args:
+            manual: If True, send telegram notification when market is closed.
+            notify_busy: If True, send telegram notification when scan is already in progress.
+        """
         if self.is_scanning:
             if notify_busy:
                 self.telegram.send_message("⏳ Scan already in progress...")
@@ -154,9 +159,10 @@ class TradingBot:
         market_status = get_market_status()
 
         if not market_status['is_open']:
-            msg = "⏸️ US market closed. Skipping scan."
-            print(msg)
-            self.telegram.send_message(msg)
+            if manual:
+                self.telegram.send_message("⏸️ US market closed. Skipping scan.")
+            else:
+                print("⏸️ US market closed. Skipping scan.")
             self.is_scanning = False
             return []
 
@@ -402,7 +408,7 @@ class TradingBot:
                                 if response == 'SCAN':
                                     self.telegram.send_message("🔍 Starting scan...")
                                     threading.Thread(
-                                        target=lambda: self.run_scan(notify_busy=True),
+                                        target=lambda: self.run_scan(manual=True, notify_busy=True),
                                         daemon=True
                                     ).start()
                                 elif response == 'RESCREEN':
