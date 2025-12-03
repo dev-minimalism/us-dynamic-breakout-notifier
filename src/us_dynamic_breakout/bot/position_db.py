@@ -2,12 +2,28 @@
 
 import json
 from datetime import datetime
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Any
 from contextlib import contextmanager
 
+import numpy as np
 import psycopg2
 from psycopg2.extras import RealDictCursor
 from sshtunnel import SSHTunnelForwarder
+
+
+def _convert_numpy_types(value: Any) -> Any:
+    """Convert NumPy types to Python native types for database compatibility."""
+    if isinstance(value, (np.integer,)):
+        return int(value)
+    elif isinstance(value, (np.floating,)):
+        return float(value)
+    elif isinstance(value, np.ndarray):
+        return value.tolist()
+    elif isinstance(value, dict):
+        return {k: _convert_numpy_types(v) for k, v in value.items()}
+    elif isinstance(value, list):
+        return [_convert_numpy_types(v) for v in value]
+    return value
 
 
 class DBPositionManager:
@@ -110,6 +126,10 @@ class DBPositionManager:
         Returns:
             Created position dictionary
         """
+        # Convert NumPy types to Python native types
+        entry_price = _convert_numpy_types(entry_price)
+        signal = _convert_numpy_types(signal)
+
         position = {
             'ticker': ticker,
             'entry_price': entry_price,
@@ -290,6 +310,9 @@ class DBPositionManager:
         Returns:
             Trade record dictionary
         """
+        # Convert NumPy types to Python native types
+        exit_price = _convert_numpy_types(exit_price)
+
         entry_date_str = position['entry_date']
         if isinstance(entry_date_str, str):
             entry_date = datetime.strptime(entry_date_str, '%Y-%m-%d %H:%M:%S')
@@ -304,13 +327,13 @@ class DBPositionManager:
             'ticker': position['ticker'],
             'pattern': position['pattern'],
             'entry_date': entry_date,
-            'entry_price': position['entry_price'],
+            'entry_price': _convert_numpy_types(position['entry_price']),
             'exit_date': exit_date,
             'exit_price': exit_price,
             'exit_reason': exit_reason,
-            'profit_pct': profit_pct,
+            'profit_pct': _convert_numpy_types(profit_pct),
             'holding_days': holding_days,
-            'signal_data': position.get('signal', {})
+            'signal_data': _convert_numpy_types(position.get('signal', {}))
         }
 
         with self._get_connection() as conn:
