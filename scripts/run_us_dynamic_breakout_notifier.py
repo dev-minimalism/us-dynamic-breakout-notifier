@@ -171,25 +171,29 @@ class TradingBot:
 
             # Process signals
             for signal in signals:
-                # Send notification
+                # Skip if already holding position
+                if self.positions.has_position(signal['ticker']):
+                    print(f"  ⏭️ {signal['ticker']}: Already in position, skipping")
+                    continue
+
+                # Send notification and add position
                 msg = self.telegram.format_signal_message(signal)
                 self.telegram.send_message(msg)
 
-                # Add position if not already held
-                if not self.positions.has_position(signal['ticker']):
-                    self.positions.add(
-                        ticker=signal['ticker'],
-                        entry_price=signal['current_price'],
-                        pattern=signal['pattern'],
-                        signal=signal
-                    )
+                self.positions.add(
+                    ticker=signal['ticker'],
+                    entry_price=signal['current_price'],
+                    pattern=signal['pattern'],
+                    signal=signal
+                )
 
             if not signals:
                 print("⚪ No signals found")
-                self.telegram.send_message(
-                    f"✅ Scan complete. No breakout signals found.\n"
-                    f"📊 Scanned: {len(self.watchlist.tickers)} stocks"
-                )
+                if manual:
+                    self.telegram.send_message(
+                        f"✅ Scan complete. No breakout signals found.\n"
+                        f"📊 Scanned: {len(self.watchlist.tickers)} stocks"
+                    )
 
             return signals
 

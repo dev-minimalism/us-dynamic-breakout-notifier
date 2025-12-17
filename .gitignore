@@ -21,3 +21,5 @@ ENV/
 
 # Legacy config with credentials
 config.py
+
+/logs/
