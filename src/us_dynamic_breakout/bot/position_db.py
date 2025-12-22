@@ -1,13 +1,18 @@
 """Position management using PostgreSQL database with SSH tunnel."""
 
 import json
+import logging
+import time
 from datetime import datetime
 from typing import List, Dict, Optional
 from contextlib import contextmanager
 
 import psycopg2
 from psycopg2.extras import RealDictCursor
-from sshtunnel import SSHTunnelForwarder
+from sshtunnel import SSHTunnelForwarder, BaseSSHTunnelForwarderError
+from paramiko.ssh_exception import SSHException
+
+logger = logging.getLogger(__name__)
 
 
 class DBPositionManager:
@@ -23,7 +28,10 @@ class DBPositionManager:
         db_port: int,
         db_name: str,
         db_user: str,
-        db_password: str
+        db_password: str,
+        max_retries: int = 3,
+        retry_delay: float = 2.0,
+        ssh_timeout: float = 10.0
     ):
         """
         Initialize DB position manager.
@@ -38,6 +46,9 @@ class DBPositionManager:
             db_name: Database name
             db_user: Database username
             db_password: Database password
+            max_retries: Maximum number of connection retry attempts
+            retry_delay: Initial delay between retries (doubles each attempt)
+            ssh_timeout: SSH connection timeout in seconds
         """
         self.ssh_config = {
             'ssh_host': ssh_host,
@@ -52,19 +63,61 @@ class DBPositionManager:
             'user': db_user,
             'password': db_password,
         }
+        self.max_retries = max_retries
+        self.retry_delay = retry_delay
+        self.ssh_timeout = ssh_timeout
         self._tunnel = None
         self._local_port = None
 
-    @contextmanager
-    def _get_connection(self):
-        """Get database connection via SSH tunnel."""
-        tunnel = SSHTunnelForwarder(
+    def _create_tunnel(self) -> SSHTunnelForwarder:
+        """Create SSH tunnel with timeout configuration."""
+        return SSHTunnelForwarder(
             (self.ssh_config['ssh_host'], self.ssh_config['ssh_port']),
             ssh_username=self.ssh_config['ssh_user'],
             ssh_pkey=self.ssh_config['ssh_key_path'],
-            remote_bind_address=(self.db_config['host'], self.db_config['port'])
+            remote_bind_address=(self.db_config['host'], self.db_config['port']),
+            set_keepalive=30.0,
         )
-        tunnel.start()
+
+    def _start_tunnel_with_retry(self) -> SSHTunnelForwarder:
+        """Start SSH tunnel with retry logic and exponential backoff."""
+        last_error = None
+        delay = self.retry_delay
+
+        for attempt in range(1, self.max_retries + 1):
+            tunnel = None
+            try:
+                tunnel = self._create_tunnel()
+                tunnel.start()
+                if attempt > 1:
+                    logger.info(f"SSH tunnel connected on attempt {attempt}")
+                return tunnel
+            except (BaseSSHTunnelForwarderError, SSHException, EOFError, OSError) as e:
+                last_error = e
+                if tunnel:
+                    try:
+                        tunnel.stop()
+                    except Exception:
+                        pass
+
+                if attempt < self.max_retries:
+                    logger.warning(
+                        f"SSH tunnel connection failed (attempt {attempt}/{self.max_retries}): {e}. "
+                        f"Retrying in {delay:.1f}s..."
+                    )
+                    time.sleep(delay)
+                    delay *= 2  # Exponential backoff
+                else:
+                    logger.error(
+                        f"SSH tunnel connection failed after {self.max_retries} attempts: {e}"
+                    )
+
+        raise last_error
+
+    @contextmanager
+    def _get_connection(self):
+        """Get database connection via SSH tunnel with retry logic."""
+        tunnel = self._start_tunnel_with_retry()
 
         try:
             conn = psycopg2.connect(
@@ -73,7 +126,8 @@ class DBPositionManager:
                 dbname=self.db_config['dbname'],
                 user=self.db_config['user'],
                 password=self.db_config['password'],
-                cursor_factory=RealDictCursor
+                cursor_factory=RealDictCursor,
+                connect_timeout=10
             )
             try:
                 yield conn
