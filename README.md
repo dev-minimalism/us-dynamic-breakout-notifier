@@ -105,6 +105,8 @@ dynamic-oneil-breakout/
 ├── data/                    # Runtime data (JSON)
 │   ├── watchlist.json
 │   └── positions.json
+├── logs/                    # Log files (auto-rotated daily)
+│   └── bot.log
 └── .env                     # Environment variables
 ```
 
@@ -164,16 +166,14 @@ The backtest engine:
 ## Background Execution
 
 ```bash
-# Basic background run
-nohup python scripts/run_us_dynamic_breakout_notifier.py > bot.log 2>&1 &
-
-# With date-stamped log file
-nohup python -u scripts/run_us_dynamic_breakout_notifier.py > logs/bot_$(date +%Y%m%d).log 2>&1 &
-
-# logs 폴더에 저장
-mkdir -p logs
-nohup python -u scripts/run_us_dynamic_breakout_notifier.py > logs/bot_$(date +%Y%m%d).log 2>&1 &
+# Run in background (logs auto-rotate daily)
+nohup python -u scripts/run_us_dynamic_breakout_notifier.py &
 ```
+
+**Log files** are automatically managed:
+- Location: `logs/bot.log` (current) + `logs/bot.log.YYYYMMDD` (rotated)
+- Rotation: Daily at midnight
+- Retention: 30 days
 
 **Useful commands:**
 
@@ -182,7 +182,7 @@ nohup python -u scripts/run_us_dynamic_breakout_notifier.py > logs/bot_$(date +%
 ps aux | grep run_us_dynamic_breakout_notifier
 
 # Watch logs in real-time
-tail -f bot.log
+tail -f logs/bot.log
 
 # Stop the bot
 pkill -f run_us_dynamic_breakout_notifier

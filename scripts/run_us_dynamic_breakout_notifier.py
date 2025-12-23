@@ -12,11 +12,52 @@ This script runs the complete trading bot with:
 import os
 import sys
 import time
+import logging
 import threading
 from datetime import datetime, timedelta
 from pathlib import Path
+from logging.handlers import TimedRotatingFileHandler
 
 from dotenv import load_dotenv
+
+
+def setup_logging():
+    """Configure logging with daily file rotation."""
+    log_dir = Path(__file__).parent.parent / "logs"
+    log_dir.mkdir(exist_ok=True)
+
+    log_file = log_dir / "bot.log"
+
+    # Create formatter
+    formatter = logging.Formatter(
+        '%(asctime)s [%(levelname)s] %(message)s',
+        datefmt='%Y-%m-%d %H:%M:%S'
+    )
+
+    # File handler with daily rotation (keeps 30 days)
+    file_handler = TimedRotatingFileHandler(
+        log_file,
+        when='midnight',
+        interval=1,
+        backupCount=30,
+        encoding='utf-8'
+    )
+    file_handler.suffix = '%Y%m%d'  # bot.log.20241224
+    file_handler.setFormatter(formatter)
+    file_handler.setLevel(logging.INFO)
+
+    # Console handler
+    console_handler = logging.StreamHandler(sys.stdout)
+    console_handler.setFormatter(formatter)
+    console_handler.setLevel(logging.INFO)
+
+    # Root logger
+    root_logger = logging.getLogger()
+    root_logger.setLevel(logging.INFO)
+    root_logger.addHandler(file_handler)
+    root_logger.addHandler(console_handler)
+
+    return logging.getLogger(__name__)
 
 # Load .env file
 load_dotenv(Path(__file__).parent.parent / ".env")
@@ -40,6 +81,8 @@ class TradingBot:
 
     def __init__(self):
         """Initialize the trading bot."""
+        self.logger = logging.getLogger(__name__)
+
         # Load settings from environment
         self.telegram_token = os.getenv('TELEGRAM_TOKEN', '')
         self.telegram_chat_id = os.getenv('TELEGRAM_CHAT_ID', '')
@@ -71,8 +114,8 @@ class TradingBot:
 
         # Validate required settings
         if not self.telegram_token or not self.telegram_chat_id:
-            print("❌ Telegram credentials not configured!")
-            print("   Set TELEGRAM_TOKEN and TELEGRAM_CHAT_ID in .env file")
+            self.logger.error("❌ Telegram credentials not configured!")
+            self.logger.error("   Set TELEGRAM_TOKEN and TELEGRAM_CHAT_ID in .env file")
             sys.exit(1)
 
         # Initialize components
@@ -99,10 +142,10 @@ class TradingBot:
         self.is_scanning = False
         self.is_screening = False
 
-        print("✅ Trading bot initialized (US Market)")
-        print(f"   Mode: {'Dynamic Screening' if self.use_dynamic_screening else 'Manual Watchlist'}")
-        print(f"   Stocks: {len(self.watchlist.tickers)}")
-        print(f"   Positions: {len(self.positions.positions)}")
+        self.logger.info("✅ Trading bot initialized (US Market)")
+        self.logger.info(f"   Mode: {'Dynamic Screening' if self.use_dynamic_screening else 'Manual Watchlist'}")
+        self.logger.info(f"   Stocks: {len(self.watchlist.tickers)}")
+        self.logger.info(f"   Positions: {len(self.positions.positions)}")
 
     def needs_rescreening(self) -> bool:
         """
@@ -173,7 +216,7 @@ class TradingBot:
             if manual:
                 self.telegram.send_message("⏸️ US market closed. Skipping scan.")
             else:
-                print("⏸️ US market closed. Skipping scan.")
+                self.logger.info("⏸️ US market closed. Skipping scan.")
             self.is_scanning = False
             return []
 
@@ -184,7 +227,7 @@ class TradingBot:
             for signal in signals:
                 # Skip if already holding position
                 if self.positions.has_position(signal['ticker']):
-                    print(f"  ⏭️ {signal['ticker']}: Already in position, skipping")
+                    self.logger.info(f"  ⏭️ {signal['ticker']}: Already in position, skipping")
                     continue
 
                 # Send notification and add position
@@ -199,7 +242,7 @@ class TradingBot:
                 )
 
             if not signals:
-                print("⚪ No signals found")
+                self.logger.info("⚪ No signals found")
                 if manual:
                     self.telegram.send_message(
                         f"✅ Scan complete. No breakout signals found.\n"
@@ -244,7 +287,7 @@ class TradingBot:
                     self.positions.remove(pos['ticker'])
 
             except Exception as e:
-                print(f"  Position check error for {pos['ticker']}: {e}")
+                self.logger.error(f"  Position check error for {pos['ticker']}: {e}")
 
     def handle_command(self, text: str) -> str:
         """Handle Telegram command and return response."""
@@ -415,11 +458,11 @@ class TradingBot:
                         if 'message' in update and 'text' in update['message']:
                             text = update['message']['text']
                             chat_id = str(update['message']['chat']['id'])
-                            print(f"📩 Received: '{text}' from chat_id={chat_id}")
+                            self.logger.info(f"📩 Received: '{text}' from chat_id={chat_id}")
 
                             if chat_id == self.telegram_chat_id:
                                 response = self.handle_command(text)
-                                print(f"📤 Response: {response}")
+                                self.logger.debug(f"📤 Response: {response}")
 
                                 if response == 'SCAN':
                                     self.telegram.send_message("🔍 Starting scan...")
@@ -436,12 +479,12 @@ class TradingBot:
                                 elif response:
                                     self.telegram.send_message(response)
                 except Exception as e:
-                    print(f"Command listener error: {e}")
+                    self.logger.error(f"Command listener error: {e}")
                 time.sleep(2)
 
         thread = threading.Thread(target=listener, daemon=True)
         thread.start()
-        print("✅ Command listener started")
+        self.logger.info("✅ Command listener started")
 
     def _get_next_scan_time(self) -> datetime:
         """
@@ -470,7 +513,7 @@ class TradingBot:
 
         # Initial screening if needed
         if self.needs_rescreening():
-            print("\n🚀 Running initial screening...")
+            self.logger.info("🚀 Running initial screening...")
             self.run_screening()
 
         # Send startup message
@@ -494,12 +537,12 @@ class TradingBot:
                 wait_seconds = (next_scan - datetime.now()).total_seconds()
 
                 if wait_seconds > 0:
-                    print(f"\n⏰ Next scan at {next_scan.strftime('%H:%M:%S')} (waiting {int(wait_seconds)}s)")
+                    self.logger.info(f"⏰ Next scan at {next_scan.strftime('%H:%M:%S')} (waiting {int(wait_seconds)}s)")
                     time.sleep(wait_seconds)
 
                 # Run scan
-                print(f"\n{'='*50}")
-                print(f"🔍 Scan at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+                self.logger.info("=" * 50)
+                self.logger.info(f"🔍 Scan at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
                 self.check_positions()
                 self.run_scan()
 
@@ -507,12 +550,14 @@ class TradingBot:
                 time.sleep(60)
 
         except KeyboardInterrupt:
-            print("\n\n⛔ Bot stopped")
+            self.logger.info("⛔ Bot stopped")
             self.telegram.send_message("⛔ Bot stopped")
 
 
 def main():
     """Entry point."""
+    logger = setup_logging()
+    logger.info("Starting O'Neil Breakout Bot...")
     bot = TradingBot()
     bot.run()
 
