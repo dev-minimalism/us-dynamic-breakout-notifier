@@ -105,13 +105,24 @@ class TradingBot:
         print(f"   Positions: {len(self.positions.positions)}")
 
     def needs_rescreening(self) -> bool:
-        """Check if rescreening is needed."""
+        """
+        Check if rescreening is needed.
+
+        Screening runs daily at 10:05 KST (after US market close, data confirmed).
+        """
         if not self.use_dynamic_screening:
             return False
         if self.last_screening_time is None:
             return True
-        hours_passed = (datetime.now() - self.last_screening_time).total_seconds() / 3600
-        return hours_passed >= self.screening_interval_hours
+
+        now = datetime.now()
+        screening_time_today = now.replace(hour=10, minute=5, second=0, microsecond=0)
+
+        # Check if it's past 10:05 today and last screening was before today's 10:05
+        if now >= screening_time_today and self.last_screening_time < screening_time_today:
+            return True
+
+        return False
 
     def run_screening(self):
         """Run dynamic stock screening."""
@@ -135,7 +146,7 @@ class TradingBot:
                 f"✅ <b>Screening Complete!</b>\n\n"
                 f"📊 Updated watchlist:\n"
                 f"   🇺🇸 US: {len(tickers)} stocks\n\n"
-                f"⏰ Next screening: {self.screening_interval_hours}h"
+                f"⏰ Next screening: Tomorrow 10:05"
             )
 
         except Exception as e:
@@ -329,11 +340,12 @@ class TradingBot:
 
     def _get_status_text(self) -> str:
         status = get_market_status()
+        market_text = f"{status['session']} ({'Open' if status['is_open'] else 'Closed'})"
         return f"""
 📊 <b>Bot Status</b>
 
 ⏰ Time: {status['time']}
-🇺🇸 US Market: {'Open' if status['is_open'] else 'Closed'}
+🇺🇸 US Market: {market_text}
 
 📈 Watchlist: {len(self.watchlist.tickers)} stocks
 📊 Positions: {len(self.positions.positions)}
@@ -431,6 +443,27 @@ class TradingBot:
         thread.start()
         print("✅ Command listener started")
 
+    def _get_next_scan_time(self) -> datetime:
+        """
+        Calculate next scan time (HH:05 or HH:35).
+
+        Scans run at 5 and 35 minutes past each hour.
+        """
+        now = datetime.now()
+        minute = now.minute
+
+        if minute < 5:
+            # Next scan at HH:05
+            next_time = now.replace(minute=5, second=0, microsecond=0)
+        elif minute < 35:
+            # Next scan at HH:35
+            next_time = now.replace(minute=35, second=0, microsecond=0)
+        else:
+            # Next scan at (HH+1):05
+            next_time = now.replace(minute=5, second=0, microsecond=0) + timedelta(hours=1)
+
+        return next_time
+
     def run(self):
         """Main bot loop."""
         self.start_command_listener()
@@ -444,7 +477,8 @@ class TradingBot:
         self.telegram.send_message(
             f"🤖 <b>O'Neil Breakout Bot Started (US)</b>\n\n"
             f"📊 Watchlist: {len(self.watchlist.tickers)} stocks\n"
-            f"📈 Scan interval: {self.scan_interval_seconds // 60} min\n\n"
+            f"📈 Scan: HH:05, HH:35\n"
+            f"🔄 Screening: Daily 10:05\n\n"
             f"Send /help for commands"
         )
 
@@ -455,16 +489,22 @@ class TradingBot:
                 if self.needs_rescreening():
                     self.run_screening()
 
+                # Calculate time to wait until next scan
+                next_scan = self._get_next_scan_time()
+                wait_seconds = (next_scan - datetime.now()).total_seconds()
+
+                if wait_seconds > 0:
+                    print(f"\n⏰ Next scan at {next_scan.strftime('%H:%M:%S')} (waiting {int(wait_seconds)}s)")
+                    time.sleep(wait_seconds)
+
                 # Run scan
                 print(f"\n{'='*50}")
                 print(f"🔍 Scan at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
                 self.check_positions()
                 self.run_scan()
 
-                # Wait for next scan
-                next_scan = datetime.now() + timedelta(seconds=self.scan_interval_seconds)
-                print(f"⏰ Next scan: {next_scan.strftime('%H:%M:%S')}")
-                time.sleep(self.scan_interval_seconds)
+                # Small delay to ensure we pass the current minute
+                time.sleep(60)
 
         except KeyboardInterrupt:
             print("\n\n⛔ Bot stopped")
