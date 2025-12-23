@@ -1,7 +1,15 @@
 """Telegram bot integration for notifications and commands."""
 
+import json
 import requests
 from datetime import datetime
+
+
+# Default command keyboard layout
+DEFAULT_KEYBOARD = [
+    ["📊 /status", "📈 /positions"],
+    ["🔍 /scan", "❓ /help"]
+]
 
 
 class TelegramBot:
@@ -20,13 +28,21 @@ class TelegramBot:
         self.base_url = f"https://api.telegram.org/bot{token}"
         self.last_update_id = 0
 
-    def send_message(self, message: str, parse_mode: str = "HTML") -> bool:
+    def send_message(
+        self,
+        message: str,
+        parse_mode: str = "HTML",
+        keyboard: list | None = None,
+        show_keyboard: bool = True
+    ) -> bool:
         """
         Send message to Telegram chat.
 
         Args:
             message: Message text (can include HTML formatting)
             parse_mode: Message parse mode ("HTML" or "Markdown")
+            keyboard: Custom keyboard layout (2D list of button texts)
+            show_keyboard: If True, show reply keyboard (default keyboard if none provided)
 
         Returns:
             True if sent successfully
@@ -37,6 +53,16 @@ class TelegramBot:
                 'text': message,
                 'parse_mode': parse_mode
             }
+
+            if show_keyboard:
+                kb = keyboard if keyboard else DEFAULT_KEYBOARD
+                reply_markup = {
+                    "keyboard": kb,
+                    "resize_keyboard": True,
+                    "is_persistent": True,
+                }
+                payload['reply_markup'] = json.dumps(reply_markup)
+
             response = requests.post(f"{self.base_url}/sendMessage", data=payload)
             if response.status_code == 200:
                 print("✅ Telegram message sent")
@@ -44,6 +70,28 @@ class TelegramBot:
             else:
                 print(f"❌ Telegram send failed: {response.status_code}")
                 return False
+        except Exception as e:
+            print(f"❌ Telegram error: {e}")
+            return False
+
+    def hide_keyboard(self, message: str = "키보드가 숨겨졌습니다.") -> bool:
+        """
+        Send message and hide the reply keyboard.
+
+        Args:
+            message: Message to send when hiding keyboard
+
+        Returns:
+            True if sent successfully
+        """
+        try:
+            payload = {
+                'chat_id': self.chat_id,
+                'text': message,
+                'reply_markup': json.dumps({"remove_keyboard": True})
+            }
+            response = requests.post(f"{self.base_url}/sendMessage", data=payload)
+            return response.status_code == 200
         except Exception as e:
             print(f"❌ Telegram error: {e}")
             return False
