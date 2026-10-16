@@ -10,7 +10,7 @@ readme = "README.md"
 requires-python = ">=3.9"
 license = {text = "MIT"}
 authors = [
-    {name = "pink-spider"}
+    {name = "dev-minimalism"}
 ]
 keywords = ["trading", "stocks", "breakout", "oneil", "canslim"]
 classifiers = [
