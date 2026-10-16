@@ -12,6 +12,9 @@ William O'Neil pivot-breakout trading bot for US stocks (S&P 500 + NASDAQ 100). 
 # Install (dev extras include pytest, ruff, black, mypy)
 pip install -e ".[dev]"
 
+# Create PostgreSQL tables once (through the SSH tunnel or on the DB host)
+psql -h <db_host> -U <db_user> -d <db_name> -f schema.sql
+
 # Run the bot (long-running; needs .env with Telegram + SSH + DB settings)
 python scripts/run_us_dynamic_breakout_notifier.py
 nohup python -u scripts/run_us_dynamic_breakout_notifier.py &   # background
@@ -70,7 +73,7 @@ TradingBot.run_scan() ──► TelegramBot.send_message()
 - **Watchlist**: local JSON (`data/watchlist.json`), accepts legacy `us` key as well as `tickers`.
 - **Positions and trades**: `DBPositionManager` (`bot/position_db.py`), **not** the JSON `PositionManager`. The bot always constructs `DBPositionManager`; `position.py` and `data/positions.json` are legacy leftovers from the pre-DB (and Korean-market) version and are not used at runtime.
 - Each DB call opens a fresh SSH tunnel (`sshtunnel`, retry with exponential backoff, 3 attempts) and psycopg2 connection, then tears both down. The `positions` property hits the DB on every access.
-- Tables used: `positions` (unique on `ticker`, upsert on insert; columns ticker, entry_price, entry_date, pattern, stop_loss, take_profit, signal_data JSON, updated_at) and `trades` (ticker, pattern, entry_date, entry_price, exit_date, exit_price, exit_reason, profit_pct, holding_days, signal_data). No schema/migration file lives in this repo.
+- Tables used: `positions` (unique on `ticker`, upsert on insert; columns ticker, entry_price, entry_date, pattern, stop_loss, take_profit, signal_data JSON, updated_at) and `trades` (ticker, pattern, entry_date, entry_price, exit_date, exit_price, exit_reason, profit_pct, holding_days, signal_data). `schema.sql` at the repo root defines both tables (derived from the queries in `position_db.py`).
 - NumPy scalars from pandas must pass through `_convert_numpy_types()` before hitting psycopg2 or `json.dumps`.
 
 ### Telegram (`bot/telegram.py` + `TradingBot`)
@@ -96,7 +99,7 @@ Effectively also required at startup, because `TradingBot.__init__` logs the pos
 
 Optional tuning: `USE_DYNAMIC_SCREENING` (true), `MAX_STOCKS` (100), `STOP_LOSS_PCT` (0.08), `TAKE_PROFIT_PCT` (0.20), `MIN_VOLUME_SURGE` (50.0), `MAX_BREAKOUT_PCT` (5.0).
 
-`SCREENING_INTERVAL_HOURS` and `SCAN_INTERVAL_SECONDS` are still read into `TradingBot` but no longer affect anything; scheduling is fixed-time. `STOP_LOSS_PCT` / `TAKE_PROFIT_PCT` are read but `positions.add()` is called without them, so the 8% / 20% defaults in `DBPositionManager.add()` apply. `.env.example` predates the SSH/DB settings.
+`SCREENING_INTERVAL_HOURS` and `SCAN_INTERVAL_SECONDS` are still read into `TradingBot` but no longer affect anything; scheduling is fixed-time. `STOP_LOSS_PCT` / `TAKE_PROFIT_PCT` are passed to `positions.add()` and the exit-reason strings ("Stop Loss (-8%)" etc.) are derived from the stored levels.
 
 ## Gotchas
 

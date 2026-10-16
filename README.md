@@ -36,7 +36,15 @@ TELEGRAM_TOKEN=your_bot_token_from_botfather
 TELEGRAM_CHAT_ID=your_chat_id
 ```
 
-### 3. Run
+### 3. Database
+
+Positions and trade history are stored in PostgreSQL, reached through an SSH tunnel. Create the tables once:
+
+```bash
+psql -h <db_host> -U <db_user> -d <db_name> -f schema.sql
+```
+
+### 4. Run
 
 ```bash
 # Run the trading bot
@@ -104,6 +112,7 @@ us-dynamic-breakout-notifier/
 │   ├── run_us_dynamic_breakout_notifier.py  # Main bot runner
 │   ├── run_screener.py      # Screener runner
 │   └── run_backtest.py      # Backtest runner
+├── schema.sql               # PostgreSQL tables (positions, trades)
 ├── data/                    # Runtime data (JSON)
 │   └── watchlist.json
 ├── logs/                    # Log files (auto-rotated daily)
