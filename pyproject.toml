@@ -10,7 +10,7 @@ readme = "README.md"
 requires-python = ">=3.9"
 license = {text = "MIT"}
 authors = [
-    {name = "Developer"}
+    {name = "pink-spider"}
 ]
 keywords = ["trading", "stocks", "breakout", "oneil", "canslim"]
 classifiers = [
@@ -51,8 +51,10 @@ breakout-screener = "scripts.run_screener:main"
 breakout-backtest = "scripts.run_backtest:main"
 
 [project.urls]
-Homepage = "https://github.com/user/us-dynamic-breakout"
-Documentation = "https://github.com/user/us-dynamic-breakout#readme"
+Homepage = "https://github.com/dev-minimalism/us-dynamic-breakout-notifier"
+Repository = "https://github.com/dev-minimalism/us-dynamic-breakout-notifier"
+Documentation = "https://github.com/dev-minimalism/us-dynamic-breakout-notifier#readme"
+Issues = "https://github.com/dev-minimalism/us-dynamic-breakout-notifier/issues"
 
 [tool.setuptools.packages.find]
 where = ["src"]

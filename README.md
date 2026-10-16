@@ -16,12 +16,12 @@ Dynamic stock screening and breakout signal detection for US markets based on Wi
 
 ```bash
 # Clone and install
-git clone <repository-url>
-cd dynamic-oneil-breakout
+git clone https://github.com/dev-minimalism/us-dynamic-breakout-notifier.git
+cd us-dynamic-breakout-notifier
 pip install -e .
 
 # Or install dependencies directly
-pip install yfinance pandas numpy requests python-dotenv
+pip install yfinance pandas numpy requests python-dotenv psycopg2-binary sshtunnel paramiko
 ```
 
 ### 2. Configuration
@@ -30,7 +30,8 @@ pip install yfinance pandas numpy requests python-dotenv
 # Copy environment template
 cp .env.example .env
 
-# Edit .env with your Telegram credentials
+# Edit .env with your Telegram, SSH tunnel, and PostgreSQL settings
+# (see "Configuration Options" below for the full list)
 TELEGRAM_TOKEN=your_bot_token_from_botfather
 TELEGRAM_CHAT_ID=your_chat_id
 ```
@@ -62,7 +63,7 @@ WatchlistManager (watchlist.json)
 BreakoutDetector (pivot breakout + volume surge)
        |
        v
-TelegramBot (notifications) + PositionManager (positions.json)
+TelegramBot (notifications) + DBPositionManager (PostgreSQL via SSH tunnel)
 ```
 
 ### Screening Criteria
@@ -83,12 +84,13 @@ A valid breakout signal requires:
 ## Project Structure
 
 ```
-dynamic-oneil-breakout/
+us-dynamic-breakout-notifier/
 ├── src/us_dynamic_breakout/
 │   ├── bot/
 │   │   ├── detector.py      # Breakout pattern detection
 │   │   ├── telegram.py      # Telegram integration
-│   │   ├── position.py      # Position management
+│   │   ├── position.py      # Position management (legacy JSON store)
+│   │   ├── position_db.py   # Position/trade store (PostgreSQL via SSH tunnel)
 │   │   └── watchlist.py     # Watchlist management
 │   ├── screener/
 │   │   └── screener.py      # Dynamic stock screener
@@ -103,8 +105,7 @@ dynamic-oneil-breakout/
 │   ├── run_screener.py      # Screener runner
 │   └── run_backtest.py      # Backtest runner
 ├── data/                    # Runtime data (JSON)
-│   ├── watchlist.json
-│   └── positions.json
+│   └── watchlist.json
 ├── logs/                    # Log files (auto-rotated daily)
 │   └── bot.log
 └── .env                     # Environment variables
@@ -115,23 +116,40 @@ dynamic-oneil-breakout/
 Edit `.env` file:
 
 ```bash
-# Required
+# Required: Telegram
 TELEGRAM_TOKEN=your_bot_token
 TELEGRAM_CHAT_ID=your_chat_id
 
+# Required: SSH tunnel to the PostgreSQL host
+SSH_HOST=your.server.example.com
+SSH_PORT=22
+SSH_USER=ubuntu
+SSH_KEY_PATH=~/.ssh/id_rsa
+
+# Required: PostgreSQL (host/port as seen from the SSH host)
+DB_HOST=localhost
+DB_PORT=5432
+DB_NAME=breakout
+DB_USER=breakout
+DB_PASSWORD=your_db_password
+
 # Optional
-SCREENING_INTERVAL_HOURS=24    # Re-screening interval
-MAX_STOCKS=100                 # Max stocks to screen
-SCAN_INTERVAL_SECONDS=1800     # Signal scan interval (30 min)
+USE_DYNAMIC_SCREENING=true     # false = manual watchlist only
+MAX_STOCKS=100                 # Max stocks selected by screening
+MIN_VOLUME_SURGE=50.0          # Min volume increase % for a signal
+MAX_BREAKOUT_PCT=5.0           # Max % above resistance for a signal
 STOP_LOSS_PCT=0.08             # Stop loss percentage (8%)
 TAKE_PROFIT_PCT=0.20           # Take profit percentage (20%)
 ```
+
+Positions and trade history are stored in PostgreSQL (tables `positions` and `trades`), reached through an SSH tunnel. The schedule is fixed in KST: breakout scans at HH:05 and HH:35 while the US market (including pre/after-hours) is open, and re-screening daily at 10:05.
 
 ## Telegram Commands
 
 ### Scanning
 ```
 /scan          - Scan all watchlist stocks
+/rescreen      - Re-run dynamic screening now
 /status        - Check market status
 ```
 
@@ -146,6 +164,12 @@ TAKE_PROFIT_PCT=0.20           # Take profit percentage (20%)
 ```
 /positions     - View open positions
 /close AAPL    - Close position manually
+```
+
+### Trade History
+```
+/trades        - Recent closed trades
+/stats         - Win rate, average P&L, holding days
 ```
 
 ## Backtesting
