@@ -238,7 +238,9 @@ class TradingBot:
                     ticker=signal['ticker'],
                     entry_price=signal['current_price'],
                     pattern=signal['pattern'],
-                    signal=signal
+                    signal=signal,
+                    stop_loss_pct=self.stop_loss_pct,
+                    take_profit_pct=self.take_profit_pct
                 )
 
             if not signals:

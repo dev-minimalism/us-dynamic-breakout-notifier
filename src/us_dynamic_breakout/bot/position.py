@@ -149,14 +149,17 @@ class PositionManager:
             Exit reason string or None if should stay open
         """
         check_price = low_price if low_price else current_price
+        entry_price = position['entry_price']
 
         # Stop loss check
         if check_price <= position['stop_loss']:
-            return "Stop Loss (-8%)"
+            sl_pct = (position['stop_loss'] / entry_price - 1) * 100
+            return f"Stop Loss ({sl_pct:.0f}%)"
 
         # Take profit check
         if current_price >= position['take_profit']:
-            return "Take Profit (+20%)"
+            tp_pct = (position['take_profit'] / entry_price - 1) * 100
+            return f"Take Profit (+{tp_pct:.0f}%)"
 
         # Max holding period check
         if self.get_holding_days(position) >= max_holding_days:
